@@ -198,12 +198,12 @@
     </div>
 
     <script>
-        const CORS_PROXY = 'https://corsproxy.io/?';
         const APIS = {
             current: 'https://api.coralmc.it/api/leaderboard/bedwars/winstreak',
             highest: 'https://api.coralmc.it/api/leaderboard/bedwars/highest-winstreak'
         };
 
+        const CORS_PROXY = 'https://api.allorigins.win/get?url=';
         let currentPage = 1;
         let allPlayers = [];
         let filteredPlayers = [];
@@ -211,27 +211,31 @@
 
         async function fetchData() {
             try {
-                const response = await fetch(`${CORS_PROXY}${encodeURIComponent(APIS[currentLeaderboard])}`);
+                const encodedUrl = encodeURIComponent(APIS[currentLeaderboard]);
+                const response = await fetch(`${CORS_PROXY}${encodedUrl}`);
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
+                if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
                 
                 const data = await response.json();
+                const parsedData = JSON.parse(data.contents);
+                
+                if (!Array.isArray(parsedData)) throw new Error('Invalid API response format');
+                
                 return {
                     status: 'Online',
-                    players: data.slice(0, 100).sort((a, b) => 
+                    players: parsedData.slice(0, 100).sort((a, b) => 
                         b[currentLeaderboard === 'current' ? 'winstreak' : 'highest_winstreak'] - 
                         a[currentLeaderboard === 'current' ? 'winstreak' : 'highest_winstreak']
                     ),
                     lastUpdated: new Date().toLocaleTimeString()
                 };
+                
             } catch (error) {
-                console.error('Fetch Error:', error);
+                console.error('API Error:', error);
                 return {
                     status: 'Offline',
                     players: [],
-                    lastUpdated: 'Error: ' + error.message
+                    lastUpdated: `Error: ${error.message}`
                 };
             }
         }
@@ -254,9 +258,8 @@
                     <h2>Server Status</h2>
                     <p style="color: ${data.status === 'Online' ? '#4CAF50' : '#ff4444'}">
                         ${data.status}
+                        ${data.status === 'Offline' ? `<br><span class="error-message">${data.lastUpdated}</span>` : ''}
                     </p>
-                    ${data.status === 'Offline' ? 
-                        `<p class="error-message">${data.lastUpdated}</p>` : ''}
                 </div>
 
                 <div class="mc-box search-box">
@@ -271,8 +274,6 @@
             const totalPages = Math.max(1, Math.ceil(playersToShow.length / 8));
 
             playersToShow.slice(startIndex, startIndex + 8).forEach((player, index) => {
-                if(!player) return;
-                
                 const wsValue = currentLeaderboard === 'current' ? 
                               player.winstreak : 
                               player.highest_winstreak;
@@ -282,10 +283,10 @@
                         <div class="leaderboard-entry">
                             <span>#${startIndex + index + 1}</span>
                             <div>
-                                <div>${player?.name || 'N/A'}</div>
+                                <div>${player?.name || 'Anonymous'}</div>
                                 ${player.clan ? `<div class="clan-tag">🏰 ${player.clan}</div>` : ''}
                             </div>
-                            <div class="ws-value">${wsValue || 0} WS</div>
+                            <div class="ws-value">${wsValue} WS</div>
                         </div>
                     </div>
                 `;
@@ -293,9 +294,9 @@
 
             container.innerHTML += `
                 <div class="mc-box" style="grid-column: 1 / -1; text-align: center;">
-                    <button class="mc-button" onclick="changePage(-1)">◀ Prev</button>
+                    <button class="mc-button" ${currentPage === 1 ? 'disabled' : ''} onclick="changePage(-1)">◀ Prev</button>
                     <span style="margin: 0 15px;">Page ${currentPage} of ${totalPages}</span>
-                    <button class="mc-button" onclick="changePage(1)">Next ▶</button>
+                    <button class="mc-button" ${currentPage === totalPages ? 'disabled' : ''} onclick="changePage(1)">Next ▶</button>
                 </div>
             `;
         }
@@ -345,7 +346,7 @@
             }
         }
 
-        setInterval(refreshData, 300000);
+        setInterval(refreshData, 180000);
 
         window.addEventListener('load', async () => {
             const loadingProgress = document.querySelector('.loading-progress');
