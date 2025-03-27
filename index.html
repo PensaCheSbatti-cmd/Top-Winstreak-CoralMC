@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlockCraft - CoralMC Leaderboards</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+        :root {
+            --mc-green: #4CAF50;
+            --mc-dark-green: #388E3C;
+            --mc-stone: #757575;
+            --mc-dark-stone: #424242;
+            --mc-gold: #FFD700;
+            --mc-red: #ff4444;
+        }
+
+        body {
+            margin: 0;
+            background: url('minecraft-stone-bg.png') repeat;
+            font-family: 'Press Start 2P', cursive;
+            color: white;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: url('minecraft-dirt-bg.png') repeat;
+            padding: 30px;
+            text-align: center;
+            border: 4px solid var(--mc-dark-green);
+            position: relative;
+            margin-bottom: 40px;
+        }
+
+        .logo {
+            width: 600px;
+            filter: drop-shadow(0 0 10px var(--mc-green));
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .mc-box {
+            background: var(--mc-dark-stone);
+            border: 4px solid var(--mc-stone);
+            padding: 20px;
+            position: relative;
+            transition: transform 0.2s;
+        }
+
+        .mc-box:hover {
+            transform: scale(1.05);
+        }
+
+        .mc-button {
+            background: var(--mc-green);
+            border: 4px solid var(--mc-dark-green);
+            color: white;
+            padding: 15px 30px;
+            font-family: inherit;
+            cursor: pointer;
+            text-shadow: 2px 2px var(--mc-dark-green);
+            transition: all 0.2s;
+        }
+
+        .mc-button:hover {
+            background: var(--mc-dark-green);
+            transform: translateY(-2px);
+        }
+
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+
+        .loading-bar {
+            width: 300px;
+            height: 30px;
+            border: 4px solid var(--mc-stone);
+            background: var(--mc-dark-stone);
+            position: relative;
+        }
+
+        .loading-progress {
+            position: absolute;
+            height: 100%;
+            background: var(--mc-green);
+            width: 0%;
+            transition: width 2s ease-in-out;
+        }
+
+        @keyframes particles {
+            from { transform: translateY(0) rotate(0deg); }
+            to { transform: translateY(-1000px) rotate(360deg); }
+        }
+
+        .particles {
+            position: absolute;
+            pointer-events: none;
+            width: 100%;
+            height: 100%;
+        }
+
+        .particle {
+            position: absolute;
+            background: var(--mc-green);
+            width: 4px;
+            height: 4px;
+            animation: particles 3s infinite linear;
+        }
+
+        .search-box {
+            grid-column: 1 / -1;
+            text-align: center;
+        }
+
+        .mc-input {
+            background: var(--mc-dark-stone);
+            border: 4px solid var(--mc-stone);
+            color: white;
+            padding: 12px 20px;
+            font-family: 'Press Start 2P', cursive;
+            margin: 10px;
+            width: 300px;
+        }
+
+        .leaderboard-entry {
+            display: grid;
+            grid-template-columns: 50px 1fr 100px;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .clan-tag {
+            color: var(--mc-gold);
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+
+        .ws-value {
+            color: var(--mc-green);
+            text-align: right;
+        }
+
+        .leaderboard-switch {
+            grid-column: 1 / -1;
+            text-align: center;
+        }
+
+        .active {
+            background: var(--mc-dark-green) !important;
+            transform: translateY(-2px);
+        }
+
+        .error-message {
+            color: var(--mc-red);
+            font-size: 0.8em;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-screen">
+        <div class="loading-bar">
+            <div class="loading-progress"></div>
+        </div>
+    </div>
+
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <header class="header">
+            <img src="minecraft-logo.png" alt="BlockCraft" class="logo">
+        </header>
+
+        <div class="stats-grid" id="leaderboard-container"></div>
+    </div>
+
+    <script>
+        const CORS_PROXY = 'https://corsproxy.io/?';
+        const APIS = {
+            current: 'https://api.coralmc.it/api/leaderboard/bedwars/winstreak',
+            highest: 'https://api.coralmc.it/api/leaderboard/bedwars/highest-winstreak'
+        };
+
+        let currentPage = 1;
+        let allPlayers = [];
+        let filteredPlayers = [];
+        let currentLeaderboard = 'current';
+
+        async function fetchData() {
+            try {
+                const response = await fetch(`${CORS_PROXY}${encodeURIComponent(APIS[currentLeaderboard])}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                return {
+                    status: 'Online',
+                    players: data.slice(0, 100).sort((a, b) => 
+                        b[currentLeaderboard === 'current' ? 'winstreak' : 'highest_winstreak'] - 
+                        a[currentLeaderboard === 'current' ? 'winstreak' : 'highest_winstreak']
+                    ),
+                    lastUpdated: new Date().toLocaleTimeString()
+                };
+            } catch (error) {
+                console.error('Fetch Error:', error);
+                return {
+                    status: 'Offline',
+                    players: [],
+                    lastUpdated: 'Error: ' + error.message
+                };
+            }
+        }
+
+        function updateUI(data) {
+            const container = document.getElementById('leaderboard-container');
+            container.innerHTML = `
+                <div class="mc-box leaderboard-switch">
+                    <button class="mc-button ${currentLeaderboard === 'current' ? 'active' : ''}" 
+                            onclick="switchLeaderboard('current')">
+                        Current Winstreak
+                    </button>
+                    <button class="mc-button ${currentLeaderboard === 'highest' ? 'active' : ''}" 
+                            onclick="switchLeaderboard('highest')">
+                        Highest Winstreak
+                    </button>
+                </div>
+
+                <div class="mc-box">
+                    <h2>Server Status</h2>
+                    <p style="color: ${data.status === 'Online' ? '#4CAF50' : '#ff4444'}">
+                        ${data.status}
+                    </p>
+                    ${data.status === 'Offline' ? 
+                        `<p class="error-message">${data.lastUpdated}</p>` : ''}
+                </div>
+
+                <div class="mc-box search-box">
+                    <input type="text" class="mc-input" placeholder="Search player..." 
+                           oninput="filterPlayers(this.value)">
+                    <button class="mc-button" onclick="refreshData()">Refresh</button>
+                </div>
+            `;
+
+            const playersToShow = filteredPlayers.length > 0 ? filteredPlayers : data.players;
+            const startIndex = (currentPage - 1) * 8;
+            const totalPages = Math.max(1, Math.ceil(playersToShow.length / 8));
+
+            playersToShow.slice(startIndex, startIndex + 8).forEach((player, index) => {
+                if(!player) return;
+                
+                const wsValue = currentLeaderboard === 'current' ? 
+                              player.winstreak : 
+                              player.highest_winstreak;
+
+                container.innerHTML += `
+                    <div class="mc-box">
+                        <div class="leaderboard-entry">
+                            <span>#${startIndex + index + 1}</span>
+                            <div>
+                                <div>${player?.name || 'N/A'}</div>
+                                ${player.clan ? `<div class="clan-tag">🏰 ${player.clan}</div>` : ''}
+                            </div>
+                            <div class="ws-value">${wsValue || 0} WS</div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML += `
+                <div class="mc-box" style="grid-column: 1 / -1; text-align: center;">
+                    <button class="mc-button" onclick="changePage(-1)">◀ Prev</button>
+                    <span style="margin: 0 15px;">Page ${currentPage} of ${totalPages}</span>
+                    <button class="mc-button" onclick="changePage(1)">Next ▶</button>
+                </div>
+            `;
+        }
+
+        async function switchLeaderboard(type) {
+            currentLeaderboard = type;
+            currentPage = 1;
+            await refreshData();
+        }
+
+        function filterPlayers(searchTerm) {
+            const search = searchTerm.toLowerCase();
+            filteredPlayers = allPlayers.filter(player => 
+                player.name.toLowerCase().includes(search)
+            );
+            currentPage = 1;
+            updateUI({ 
+                status: document.querySelector('.mc-box h2 + p')?.textContent || 'Online',
+                players: filteredPlayers,
+                lastUpdated: document.querySelector('.mc-box h2 + p')?.textContent || new Date().toLocaleTimeString()
+            });
+        }
+
+        async function changePage(offset) {
+            const playersToShow = filteredPlayers.length > 0 ? filteredPlayers : allPlayers;
+            const totalPages = Math.max(1, Math.ceil(playersToShow.length / 8));
+            const newPage = currentPage + offset;
+            
+            if (newPage > 0 && newPage <= totalPages) {
+                currentPage = newPage;
+                const data = await fetchData();
+                updateUI(data);
+            }
+        }
+
+        async function refreshData() {
+            document.querySelector('.loading-screen').style.display = 'flex';
+            try {
+                const data = await fetchData();
+                allPlayers = data.players;
+                filteredPlayers = [];
+                updateUI(data);
+            } finally {
+                setTimeout(() => {
+                    document.querySelector('.loading-screen').style.display = 'none';
+                }, 1000);
+            }
+        }
+
+        setInterval(refreshData, 300000);
+
+        window.addEventListener('load', async () => {
+            const loadingProgress = document.querySelector('.loading-progress');
+            loadingProgress.style.width = '100%';
+            
+            setTimeout(async () => {
+                document.querySelector('.loading-screen').style.display = 'none';
+                await refreshData();
+                createParticles();
+            }, 2000);
+        });
+
+        function createParticles() {
+            const particles = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 3 + 's';
+                particles.appendChild(particle);
+            }
+        }
+    </script>
+</body>
+</html>
