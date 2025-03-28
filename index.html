@@ -6,7 +6,7 @@
     <title>CoralMC - Top Winstreak @pensachesbatti</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
-
+        
         :root {
             --mc-green: #4CAF50;
             --mc-dark-green: #388E3C;
@@ -18,12 +18,16 @@
 
         body {
             margin: 0;
-            background: url('minecraft-stone-bg.png') repeat;
+            background: var(--mc-dark-stone);
             font-family: 'Press Start 2P', cursive;
             color: white;
             min-height: 100vh;
             position: relative;
             overflow-x: hidden;
+            /* L'immagine di sfondo verrà impostata dalla funzione setBackgroundImage */
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
         }
 
         .container {
@@ -32,38 +36,27 @@
             padding: 20px;
         }
 
+        /* Qui abbiamo il riquadro grigio con bordo verde */
         .header {
-            background: url('minecraft-dirt-bg.png') repeat;
+            background: var(--mc-stone); /* Grigio = #757575 */
             padding: 30px;
             text-align: center;
-            border: 4px solid var(--mc-dark-green);
+            border: 4px solid var(--mc-dark-green); /* Verde scuro = #388E3C */
             margin-bottom: 20px;
             display: flex;
-            justify-content: space-between;
+            justify-content: center; 
             align-items: center;
-            position: relative;
         }
 
-        .logo {
-            width: 500px;
-            filter: drop-shadow(0 0 10px var(--mc-green));
-            margin-bottom: 20px;
-            animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
-        }
-
+        /* Qui abbiamo la barra interna, sfondo più scuro e testo verde */
         .status-bar {
-            background: var(--mc-dark-stone);
-            padding: 8px 15px;
-            border: 2px solid var(--mc-stone);
+            background: var(--mc-dark-stone); /* Grigio più scuro = #424242 */
+            padding: 10px 15px;
+            border: none;
             font-size: 0.8em;
+            margin-left: 0;
             position: static;
-            margin-left: 20px;
+            color: var(--mc-green); /* Testo verde = #4CAF50 */
         }
 
         .leaderboard-container {
@@ -117,6 +110,7 @@
         }
 
         .mc-button {
+            font-family: 'Minecraft', 'Press Start 2P';
             background: var(--mc-green);
             border: 4px solid var(--mc-dark-green);
             color: white;
@@ -193,30 +187,50 @@
             transition: width 0.5s ease;
         }
 
-        .particles {
+        .modal {
+            display: none;
             position: fixed;
-            pointer-events: none;
-            width: 100%;
-            height: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--mc-dark-stone);
+            border: 4px solid var(--mc-stone);
+            padding: 20px;
+            z-index: 1000;
+            width: 300px;
+            text-align: center;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: var(--mc-red);
+            border: 2px solid #cc0000;
+            color: white;
+            padding: 2px 8px;
+            cursor: pointer;
+        }
+
+        .skin-container {
+            margin: 10px 0;
+            image-rendering: pixelated;
+        }
+
+        .player-stats {
+            margin-top: 10px;
+            font-size: 0.8em;
+        }
+
+        .overlay {
+            display: none;
+            position: fixed;
             top: 0;
             left: 0;
-            z-index: 1;
-        }
-
-        .particle {
-            position: absolute;
-            background: var(--mc-green);
-            width: 4px;
-            height: 4px;
-            animation: particles 3s infinite linear;
-            border-radius: 50%;
-        }
-
-        @keyframes particles {
-            0% { transform: translateY(0) rotate(0deg); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 999;
         }
     </style>
 </head>
@@ -227,11 +241,21 @@
         </div>
     </div>
 
-    <div class="particles" id="particles"></div>
+    <div class="overlay" id="overlay"></div>
+    <div class="modal" id="playerModal">
+        <button class="modal-close" onclick="closeModal()">X</button>
+        <h3 id="playerName"></h3>
+        <img class="skin-container" id="playerSkin" src="" alt="Player Skin" style="width: 150px; height: 250px;">
+        <div class="player-stats">
+            <p>Current WS: <span id="currentWS"></span></p>
+            <p>Highest WS: <span id="highestWS"></span></p>
+        </div>
+    </div>
 
     <div class="container">
+        <!-- Riquadro con sfondo grigio e bordo verde -->
         <header class="header">
-            <img src="minecraft-logo.png" alt="BlockCraft" class="logo">
+            <!-- Barra interna con sfondo più scuro e testo verde -->
             <div class="status-bar" id="status-bar">
                 Status: Loading...
             </div>
@@ -263,6 +287,7 @@
         };
 
         const CORS_PROXY = 'https://api.allorigins.win/get?url=';
+        const STEVE_UUID = 'c06f89064c8a49119c29ea1dbd1aab82';
         const PLAYERS_PER_PAGE = 10;
         const TOTAL_PAGES = 10;
         
@@ -271,14 +296,23 @@
         let filteredPlayers = [];
         let currentLeaderboard = 'current';
 
-        function createParticles() {
-            const particlesContainer = document.getElementById('particles');
-            for(let i = 0; i < 80; i++) {
-                const particle = document.createElement('div');
-                particle.className = 'particle';
-                particle.style.left = Math.random() * 100 + '%';
-                particle.style.animationDelay = Math.random() * 3 + 's';
-                particlesContainer.appendChild(particle);
+        // Funzione per impostare dinamicamente lo sfondo da un file locale
+        function setBackgroundImage(filePath) {
+            document.body.style.backgroundImage = `url(${filePath})`;
+        }
+
+        async function fetchUUID(username) {
+            try {
+                const encodedUrl = encodeURIComponent(`https://api.mojang.com/users/profiles/minecraft/${username}`);
+                const response = await fetch(`${CORS_PROXY}${encodedUrl}`);
+                
+                if (!response.ok) return null;
+                
+                const data = await response.json();
+                const userData = JSON.parse(data.contents);
+                return userData.id;
+            } catch {
+                return null;
             }
         }
 
@@ -291,8 +325,6 @@
                 
                 const data = await response.json();
                 const parsedData = JSON.parse(data.contents);
-                
-                if (!Array.isArray(parsedData)) throw new Error('Invalid API response format');
                 
                 const sortedPlayers = parsedData.slice(0, 100)
                     .sort((a, b) => 
@@ -311,7 +343,6 @@
                 };
                 
             } catch (error) {
-                console.error('API Error:', error);
                 return {
                     status: 'Offline',
                     players: [],
@@ -327,19 +358,15 @@
             const prevBtn = document.getElementById('prevBtn');
             const nextBtn = document.getElementById('nextBtn');
 
-            // Update status
             statusBar.textContent = `Status: ${data.status} | Updated: ${data.lastUpdated}`;
             statusBar.style.color = data.status === 'Online' ? '#4CAF50' : '#ff4444';
 
-            // Update pagination
             pageInfo.textContent = `Page ${currentPage} of ${TOTAL_PAGES}`;
             prevBtn.disabled = currentPage === 1;
             nextBtn.disabled = currentPage === TOTAL_PAGES;
 
-            // Clear existing entries
             leaderboard.innerHTML = '';
 
-            // Add new entries
             const startIndex = (currentPage - 1) * PLAYERS_PER_PAGE;
             const playersToShow = filteredPlayers.length > 0 ? filteredPlayers : data.players;
             
@@ -355,8 +382,30 @@
                     <div class="entry-name">${player?.name || 'Anonymous'}</div>
                     <div class="entry-ws">${wsValue} WS</div>
                 `;
+                entry.addEventListener('click', async () => {
+                    const uuid = await fetchUUID(player.name) || STEVE_UUID;
+                    showPlayerStats(player, uuid);
+                });
                 leaderboard.appendChild(entry);
             });
+        }
+
+        async function showPlayerStats(player, uuid) {
+            const modal = document.getElementById('playerModal');
+            const overlay = document.getElementById('overlay');
+            
+            document.getElementById('playerName').textContent = player.name;
+            document.getElementById('currentWS').textContent = player.winstreak;
+            document.getElementById('highestWS').textContent = player.highest_winstreak;
+            document.getElementById('playerSkin').src = `https://nmsr.nickac.dev/fullbody/${uuid}?scale=8`;
+            
+            modal.style.display = 'block';
+            overlay.style.display = 'block';
+        }
+
+        function closeModal() {
+            document.getElementById('playerModal').style.display = 'none';
+            document.getElementById('overlay').style.display = 'none';
         }
 
         function filterPlayers(searchTerm) {
@@ -393,8 +442,6 @@
                 allPlayers = data.players;
                 filteredPlayers = [];
                 updateUI(data);
-            } catch(error) {
-                console.error(error);
             } finally {
                 setTimeout(() => {
                     loadingProgress.style.width = '0%';
@@ -403,26 +450,21 @@
             }
         }
 
-        // Initialize
         window.addEventListener('load', async () => {
-            createParticles();
+            // Imposta lo sfondo al file "background.jpg" (assicurati di avere questo file nella stessa cartella)
+            setBackgroundImage('background.jpg');
             await refreshData();
             setInterval(refreshData, 300000);
-            
-            // Animate loading progress
-            const loadingProgress = document.querySelector('.loading-progress');
-            loadingProgress.style.transition = 'width 2s ease';
         });
 
         document.getElementById('searchInput').addEventListener('input', (e) => filterPlayers(e.target.value));
-        
-        // Toggle leaderboard type
         document.getElementById('toggleLeaderboard').addEventListener('click', () => {
             currentLeaderboard = currentLeaderboard === 'current' ? 'highest' : 'current';
             document.getElementById('toggleLeaderboard').textContent = 
                 currentLeaderboard === 'current' ? 'Top MAX WS' : 'Top Current WS';
             refreshData();
         });
+        document.getElementById('overlay').addEventListener('click', closeModal);
     </script>
 </body>
 </html>
